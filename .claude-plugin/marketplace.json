@@ -1,0 +1,9 @@
+{
+  "name": "claude-code-sentry-monitor",
+  "description": "Sentry AI Agent Monitoring plugins",
+  "plugins": {
+    "claude-code-sentry-monitor": {
+      "version": "1.0.0"
+    }
+  }
+}
