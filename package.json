@@ -1,0 +1,31 @@
+{
+  "name": "claude-code-sentry-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sentry AI Agent Monitoring plugin for Claude Code — traces sessions and tool calls as OpenTelemetry spans",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "postinstall": "cd scripts && npm install"
+  },
+  "keywords": [
+    "claude-code",
+    "plugin",
+    "sentry",
+    "observability",
+    "ai-monitoring"
+  ],
+  "author": "Sergiy Dybskiy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sergical/claude-code-sentry-monitor"
+  },
+  "devDependencies": {
+    "@sentry/node": "^9.0.0",
+    "@types/node": "^22.13.10",
+    "strip-json-comments": "^5.0.1",
+    "typescript": "^5.8.2"
+  }
+}

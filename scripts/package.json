@@ -1,0 +1,11 @@
+{
+  "name": "claude-code-sentry-monitor-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runtime dependencies for claude-code-sentry-monitor hooks",
+  "dependencies": {
+    "@sentry/node": "^9.0.0",
+    "strip-json-comments": "^5.0.1"
+  }
+}

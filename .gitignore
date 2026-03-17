@@ -1,0 +1,4 @@
+node_modules/
+
+# Keep compiled scripts/*.js files checked in for plugin users
+# They don't need to run the build step
