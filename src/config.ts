@@ -255,21 +255,16 @@ function parseLegacyConfig(content: string): Record<string, unknown> {
   return raw;
 }
 
-async function getCandidatePaths(cwd: string): Promise<string[]> {
+async function getCandidatePaths(): Promise<string[]> {
   const candidates: string[] = [];
 
   // 1. Explicit path via env var
   const explicitPath = process.env.CLAUDE_SENTRY_CONFIG;
   if (explicitPath) {
-    addUnique(candidates, resolveMaybeRelative(explicitPath, cwd));
+    addUnique(candidates, isAbsolute(explicitPath) ? explicitPath : resolve(explicitPath));
   }
 
-  // 2. Project-local config
-  for (const fileName of CONFIG_FILE_NAMES) {
-    addUnique(candidates, join(cwd, ".claude-code", fileName));
-  }
-
-  // 3. User-global config
+  // 2. User-global config (~/.config/claude-code/)
   const home = homedir();
   if (home) {
     for (const fileName of CONFIG_FILE_NAMES) {
@@ -345,8 +340,8 @@ function addEnvOverrides(raw: Record<string, unknown>): Record<string, unknown> 
   return withEnv;
 }
 
-export async function loadPluginConfig(cwd: string): Promise<LoadedPluginConfig | null> {
-  const candidates = await getCandidatePaths(cwd);
+export async function loadPluginConfig(): Promise<LoadedPluginConfig | null> {
+  const candidates = await getCandidatePaths();
 
   let source = "environment";
   let raw: Record<string, unknown> = {};

@@ -6,17 +6,18 @@ Each Claude Code session becomes a root `invoke_agent` span with child `execute_
 
 ## Installation
 
+**Quick start** (load for one session):
 ```bash
-# Clone the repo
-git clone https://github.com/sergical/claude-code-sentry-monitor.git
-
-# Install runtime dependencies
-cd claude-code-sentry-monitor/scripts && npm install && cd ..
-
-# Install as a Claude Code plugin
-# (run this inside Claude Code)
-/install-plugin file:///path/to/claude-code-sentry-monitor
+claude --plugin-dir /path/to/claude-code-sentry-monitor
 ```
+
+**Permanent install** (inside Claude Code):
+```
+/plugin marketplace add sergical/claude-code-sentry-monitor
+/plugin install claude-code-sentry-monitor
+```
+
+Dependencies auto-install on first hook invocation.
 
 ## Setup
 
@@ -38,16 +39,15 @@ cat > ~/.config/claude-code/sentry-monitor.json << 'EOF'
 EOF
 ```
 
-For project-specific config, create `.claude-code/sentry-monitor.json` in your project root.
-
 ## Configuration
+
+This is a developer-level tool — config is global (per-machine), not per-project.
 
 Config is loaded from the first file found (in order):
 
 1. `CLAUDE_SENTRY_CONFIG` env var (explicit path)
-2. `.claude-code/sentry-monitor.json` (project-local)
-3. `~/.config/claude-code/sentry-monitor.json` (user-global)
-4. `~/.config/sentry-claude/config` (legacy KEY=VALUE format)
+2. `~/.config/claude-code/sentry-monitor.json` (main config)
+3. `~/.config/sentry-claude/config` (legacy KEY=VALUE format, for migration)
 
 ### Options
 

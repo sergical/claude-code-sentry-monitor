@@ -324,8 +324,7 @@ async function main() {
         process.exit(0);
     }
     // Load config
-    const cwd = event.cwd || process.cwd();
-    const loaded = await loadPluginConfig(cwd);
+    const loaded = await loadPluginConfig();
     if (!loaded) {
         // No DSN configured, exit silently
         process.exit(0);
