@@ -12,7 +12,11 @@
       "author": {
         "name": "Sergiy Dybskiy"
       },
-      "source": ".",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/sergical/claude-code-sentry-monitor.git"
+      },
+      "homepage": "https://github.com/sergical/claude-code-sentry-monitor",
       "category": "monitoring"
     }
   ]
