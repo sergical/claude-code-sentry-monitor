@@ -62,6 +62,8 @@ Config is loaded from the first file found (in order):
 | `environment` | — | Environment tag on spans |
 | `tags` | `{}` | Custom key-value tags on every span |
 | `mode` | `batch` | `batch` (process at session end) or `realtime` (local HTTP server) |
+| `flushIntervalMinutes` | `0` | When > 0, flush long-lived sessions every N minutes as "chapter" transactions instead of only at session end. **Required if you keep sessions open indefinitely** — otherwise a session that never ends never reports. `0` keeps the original single-transaction-per-session behaviour. |
+| `user` | — | Sets Sentry user context, e.g. `{ "email": "you@company.com", "username": "you" }`. Lets you filter traces by `user.email:...` and populates Sentry's Users view. Without it, user context is empty — filter by the `developer` tag instead. |
 
 ### Environment variable overrides
 
@@ -77,6 +79,8 @@ Each setting can be overridden via env var:
 | `CLAUDE_SENTRY_ENABLE_METRICS` | `enableMetrics` |
 | `CLAUDE_SENTRY_TAGS` | `tags` (format: `key1:val1,key2:val2`) |
 | `CLAUDE_SENTRY_MODE` | `mode` |
+| `CLAUDE_SENTRY_FLUSH_INTERVAL_MINUTES` | `flushIntervalMinutes` |
+| `CLAUDE_SENTRY_USER_EMAIL` / `CLAUDE_SENTRY_USER_ID` / `CLAUDE_SENTRY_USER_NAME` | `user.email` / `user.id` / `user.username` |
 | `SENTRY_ENVIRONMENT` | `environment` |
 | `SENTRY_RELEASE` | `release` |
 
@@ -90,6 +94,10 @@ The plugin registers four hooks:
 - **SessionEnd** — ends the root span, flushes to Sentry
 
 In **batch mode** (default), events are written to a JSONL file and processed at session end. In **realtime mode**, events are POSTed to a local HTTP collector server.
+
+### Long-lived sessions (chapters)
+
+By default a session only reaches Sentry when it ends. If you keep Claude Code sessions open indefinitely, set `flushIntervalMinutes` so each session is flushed periodically as successive **chapter** transactions. Every chapter carries a `claude.session_id` attribute (group them in Sentry to see the whole session) plus `claude.session_chapter` and `claude.session_ongoing`. Token counts are reported per-chapter as deltas, so totals across chapters still add up to the session total.
 
 ### Security
 

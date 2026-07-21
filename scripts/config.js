@@ -14,6 +14,7 @@ const DEFAULTS = {
     maxAttributeLength: 12000,
     enableMetrics: false,
     tags: {},
+    flushIntervalMinutes: 0,
 };
 function asString(value, fieldName) {
     if (typeof value !== "string" || value.trim().length === 0) {
@@ -59,6 +60,25 @@ function asOptionalTags(value, fieldName) {
     }
     return value;
 }
+function asOptionalUser(value, fieldName) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error(`"${fieldName}" must be an object`);
+    }
+    const raw = value;
+    const user = {
+        email: asOptionalString(raw.email, `${fieldName}.email`),
+        id: asOptionalString(raw.id, `${fieldName}.id`),
+        username: asOptionalString(raw.username, `${fieldName}.username`),
+    };
+    // Drop entirely if no field was provided.
+    if (!user.email && !user.id && !user.username) {
+        return undefined;
+    }
+    return user;
+}
 function parseBooleanEnv(name) {
     const value = process.env[name];
     if (value === undefined) {
@@ -86,7 +106,10 @@ function parseNumberEnv(name) {
 }
 function parseConfigContent(raw, source) {
     try {
-        const parsed = JSON.parse(stripJsonComments(raw));
+        // Strip a leading UTF-8 BOM — editors/PowerShell on Windows often add one,
+        // and neither stripJsonComments nor JSON.parse tolerate it.
+        const withoutBom = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+        const parsed = JSON.parse(stripJsonComments(withoutBom));
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
             throw new Error("Config root must be an object");
         }
@@ -120,6 +143,11 @@ function normalizeConfig(raw) {
     }
     const modeRaw = asOptionalString(raw.mode, "mode");
     const mode = modeRaw === "realtime" ? "realtime" : "batch";
+    const flushIntervalMinutes = asOptionalNumber(raw.flushIntervalMinutes, "flushIntervalMinutes") ??
+        DEFAULTS.flushIntervalMinutes;
+    if (!Number.isFinite(flushIntervalMinutes) || flushIntervalMinutes < 0) {
+        throw new Error('"flushIntervalMinutes" must be a number >= 0');
+    }
     return {
         dsn,
         tracesSampleRate,
@@ -132,6 +160,8 @@ function normalizeConfig(raw) {
         enableMetrics: asOptionalBoolean(raw.enableMetrics, "enableMetrics") ?? DEFAULTS.enableMetrics,
         tags: asOptionalTags(raw.tags, "tags") ?? DEFAULTS.tags,
         mode,
+        flushIntervalMinutes,
+        user: asOptionalUser(raw.user, "user"),
     };
 }
 async function fileExists(filePath) {
@@ -250,6 +280,22 @@ function addEnvOverrides(raw) {
     const modeEnv = process.env.CLAUDE_SENTRY_MODE;
     if (modeEnv) {
         withEnv.mode = modeEnv;
+    }
+    const flushIntervalMinutes = parseNumberEnv("CLAUDE_SENTRY_FLUSH_INTERVAL_MINUTES");
+    if (flushIntervalMinutes !== undefined) {
+        withEnv.flushIntervalMinutes = flushIntervalMinutes;
+    }
+    const userEmail = process.env.CLAUDE_SENTRY_USER_EMAIL;
+    const userId = process.env.CLAUDE_SENTRY_USER_ID;
+    const userName = process.env.CLAUDE_SENTRY_USER_NAME;
+    if (userEmail || userId || userName) {
+        const base = withEnv.user ?? {};
+        withEnv.user = {
+            ...base,
+            ...(userEmail ? { email: userEmail } : {}),
+            ...(userId ? { id: userId } : {}),
+            ...(userName ? { username: userName } : {}),
+        };
     }
     if (process.env.SENTRY_ENVIRONMENT) {
         withEnv.environment = process.env.SENTRY_ENVIRONMENT;

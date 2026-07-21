@@ -16,7 +16,14 @@ const DEFAULTS = {
   maxAttributeLength: 12000,
   enableMetrics: false,
   tags: {} as Record<string, string>,
+  flushIntervalMinutes: 0,
 } as const;
+
+export interface SentryUser {
+  email?: string;
+  id?: string;
+  username?: string;
+}
 
 export interface PluginConfig {
   dsn: string;
@@ -30,6 +37,19 @@ export interface PluginConfig {
   enableMetrics?: boolean;
   tags?: Record<string, string>;
   mode?: "batch" | "realtime";
+  /**
+   * Populates Sentry's user context so traces show up under a user (and can be
+   * filtered with `user.email:...`). The plugin otherwise leaves user context
+   * empty. Filter by the `developer` tag instead if you don't set this.
+   */
+  user?: SentryUser;
+  /**
+   * When > 0, long-lived sessions are flushed to Sentry every N minutes as
+   * successive "chapter" transactions instead of only once at SessionEnd.
+   * Required for workflows that keep sessions open indefinitely — with the
+   * default of 0, a session that never ends never reports anything.
+   */
+  flushIntervalMinutes?: number;
 }
 
 export interface ResolvedPluginConfig {
@@ -44,6 +64,8 @@ export interface ResolvedPluginConfig {
   enableMetrics: boolean;
   tags: Record<string, string>;
   mode: "batch" | "realtime";
+  flushIntervalMinutes: number;
+  user?: SentryUser;
 }
 
 export interface LoadedPluginConfig {
@@ -100,6 +122,26 @@ function asOptionalTags(value: unknown, fieldName: string): Record<string, strin
   return value as Record<string, string>;
 }
 
+function asOptionalUser(value: unknown, fieldName: string): SentryUser | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`"${fieldName}" must be an object`);
+  }
+  const raw = value as Record<string, unknown>;
+  const user: SentryUser = {
+    email: asOptionalString(raw.email, `${fieldName}.email`),
+    id: asOptionalString(raw.id, `${fieldName}.id`),
+    username: asOptionalString(raw.username, `${fieldName}.username`),
+  };
+  // Drop entirely if no field was provided.
+  if (!user.email && !user.id && !user.username) {
+    return undefined;
+  }
+  return user;
+}
+
 function parseBooleanEnv(name: string): boolean | undefined {
   const value = process.env[name];
   if (value === undefined) {
@@ -133,7 +175,10 @@ function parseNumberEnv(name: string): number | undefined {
 
 function parseConfigContent(raw: string, source: string): Record<string, unknown> {
   try {
-    const parsed = JSON.parse(stripJsonComments(raw));
+    // Strip a leading UTF-8 BOM — editors/PowerShell on Windows often add one,
+    // and neither stripJsonComments nor JSON.parse tolerate it.
+    const withoutBom = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+    const parsed = JSON.parse(stripJsonComments(withoutBom));
 
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("Config root must be an object");
@@ -176,6 +221,13 @@ function normalizeConfig(raw: Record<string, unknown>): ResolvedPluginConfig {
   const modeRaw = asOptionalString(raw.mode, "mode");
   const mode = modeRaw === "realtime" ? "realtime" : "batch";
 
+  const flushIntervalMinutes =
+    asOptionalNumber(raw.flushIntervalMinutes, "flushIntervalMinutes") ??
+    DEFAULTS.flushIntervalMinutes;
+  if (!Number.isFinite(flushIntervalMinutes) || flushIntervalMinutes < 0) {
+    throw new Error('"flushIntervalMinutes" must be a number >= 0');
+  }
+
   return {
     dsn,
     tracesSampleRate,
@@ -190,6 +242,8 @@ function normalizeConfig(raw: Record<string, unknown>): ResolvedPluginConfig {
       asOptionalBoolean(raw.enableMetrics, "enableMetrics") ?? DEFAULTS.enableMetrics,
     tags: asOptionalTags(raw.tags, "tags") ?? DEFAULTS.tags,
     mode,
+    flushIntervalMinutes,
+    user: asOptionalUser(raw.user, "user"),
   };
 }
 
@@ -327,6 +381,24 @@ function addEnvOverrides(raw: Record<string, unknown>): Record<string, unknown> 
   const modeEnv = process.env.CLAUDE_SENTRY_MODE;
   if (modeEnv) {
     withEnv.mode = modeEnv;
+  }
+
+  const flushIntervalMinutes = parseNumberEnv("CLAUDE_SENTRY_FLUSH_INTERVAL_MINUTES");
+  if (flushIntervalMinutes !== undefined) {
+    withEnv.flushIntervalMinutes = flushIntervalMinutes;
+  }
+
+  const userEmail = process.env.CLAUDE_SENTRY_USER_EMAIL;
+  const userId = process.env.CLAUDE_SENTRY_USER_ID;
+  const userName = process.env.CLAUDE_SENTRY_USER_NAME;
+  if (userEmail || userId || userName) {
+    const base = (withEnv.user as Record<string, unknown> | undefined) ?? {};
+    withEnv.user = {
+      ...base,
+      ...(userEmail ? { email: userEmail } : {}),
+      ...(userId ? { id: userId } : {}),
+      ...(userName ? { username: userName } : {}),
+    };
   }
 
   if (process.env.SENTRY_ENVIRONMENT) {
