@@ -2,7 +2,9 @@
 
 Sentry AI Agent Monitoring plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Traces sessions and tool calls as OpenTelemetry spans in [Sentry](https://sentry.io).
 
-Each Claude Code session becomes a root `invoke_agent` span with child `execute_tool` spans for every tool call. See your sessions in the **Sentry AI Agents** dashboard.
+Each Claude Code session becomes a root `invoke_agent` span, each prompt becomes a child `chat` span with its token usage, and every tool call becomes an `execute_tool` span. All spans share the session id as `gen_ai.conversation.id`, so sessions show up in **Sentry AI Agents** and the **Conversations** view.
+
+Requires Node.js 18 or newer on the machine that runs Claude Code.
 
 ## Installation
 
@@ -82,14 +84,17 @@ Each setting can be overridden via env var:
 
 ## How it works
 
-The plugin registers four hooks:
+The plugin registers five hooks:
 
 - **SessionStart** — begins the root `invoke_agent` span
+- **UserPromptSubmit** — starts a `chat` span for the turn, with the prompt as `gen_ai.input.messages`
 - **PreToolUse** — starts a child `execute_tool` span
 - **PostToolUse** — ends the tool span, records output
 - **SessionEnd** — ends the root span, flushes to Sentry
 
-In **batch mode** (default), events are written to a JSONL file and processed at session end. In **realtime mode**, events are POSTed to a local HTTP collector server.
+Token usage, the response model, and the final assistant text for each turn come from the session transcript. Usage is counted once per API response and is set only on `chat` spans, so per-trace totals in Sentry never double count.
+
+In **batch mode** (default), events are written to a JSONL file in the system temp directory and processed at session end. In **realtime mode**, events are POSTed to a local HTTP collector server.
 
 ### Security
 

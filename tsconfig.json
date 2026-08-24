@@ -8,11 +8,21 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "forceConsistentCasingInFileNames": true,
     "declaration": false,
-    "sourceMap": false
+    "sourceMap": false,
+    "lib": [
+      "ES2022"
+    ]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["scripts", "node_modules"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "scripts",
+    "node_modules"
+  ]
 }

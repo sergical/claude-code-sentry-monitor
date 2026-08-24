@@ -1,11 +1,17 @@
 {
   "name": "claude-code-sentry-monitor",
   "description": "Sentry AI Agent Monitoring for Claude Code — traces sessions and tool calls as OpenTelemetry spans in Sentry.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Sergiy Dybskiy"
   },
-  "keywords": ["sentry", "monitoring", "observability", "ai-agents", "tracing"],
+  "keywords": [
+    "sentry",
+    "monitoring",
+    "observability",
+    "ai-agents",
+    "tracing"
+  ],
   "license": "MIT",
   "repository": "https://github.com/sergical/claude-code-sentry-monitor"
 }

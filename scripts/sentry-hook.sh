@@ -10,6 +10,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Exit silently when node is missing or older than the SDK supports (Node 18+),
+# so the hook never blocks Claude Code on a host without a usable runtime.
+if ! command -v node >/dev/null 2>&1; then
+  cat >/dev/null
+  exit 0
+fi
+NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
+if [ "${NODE_MAJOR:-0}" -lt 18 ]; then
+  cat >/dev/null
+  exit 0
+fi
+
 # Auto-install dependencies on first run
 if [ ! -d "${SCRIPT_DIR}/node_modules/@sentry/node" ]; then
   (cd "$SCRIPT_DIR" && npm install --no-fund --no-audit --silent 2>/dev/null) || true
