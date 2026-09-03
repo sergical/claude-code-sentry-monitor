@@ -96,9 +96,18 @@ Token usage, the response model, and the final assistant text for each turn come
 
 In **batch mode** (default), events are written to a JSONL file in the system temp directory and processed at session end. In **realtime mode**, events are POSTed to a local HTTP collector server.
 
+### Recovering abandoned sessions
+
+A session that crashes, is killed, or ends when the machine sleeps never runs its `SessionEnd` hook, so in batch mode its event log is never flushed and its trace is lost. On every `SessionStart` the plugin sweeps the temp directory in a detached background process and flushes any log older than an hour that belongs to another session, then deletes it. Logs that cannot be parsed are removed after 7 days. The sweep is capped at 20 logs per run and never touches the current session, so it adds no latency to the session that triggers it.
+
+### Tags
+
+Every trace is tagged with `claude_code.repo`, the name of the git repository the session ran in (detected by walking up from the session's working directory), so sessions from different projects can be told apart in Sentry.
+
 ### Security
 
 - Sensitive keys (`api_key`, `token`, `secret`, `password`, `authorization`, `cookie`, `session`, `bearer`) are automatically redacted from tool inputs/outputs
+- Credentials are also redacted by **value**, not just by key name, so a secret embedded in a shell command, a file read, or an HTTP response is caught too. Covers PEM private key blocks, JWTs, `sk-ant-*`/`sk-*`/`sk_live_*` API keys, GitHub (`ghp_*`, `github_pat_*`) and npm tokens, AWS access key ids, Google API keys, Slack tokens, credentials embedded in URLs (including Sentry DSNs), `KEY=value` assignments whose key looks sensitive, `--password`/`--token` CLI flags, and bearer tokens. The surrounding text is preserved so the command remains readable
 - Attributes are truncated to `maxAttributeLength` (default 12000 chars)
 - Set `recordInputs: false` and `recordOutputs: false` to suppress all tool data
 - No data is sent if no DSN is configured

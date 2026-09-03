@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/node";
-import { appendFileSync, existsSync, readFileSync, unlinkSync } from "node:fs";
+import { appendFileSync, existsSync, readdirSync, readFileSync, statSync, unlinkSync, } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,6 +27,93 @@ function normalizeHookEventName(name) {
 }
 function batchLogPath(sessionId) {
     return join(tmpdir(), `claude-sentry-${sessionId}.jsonl`);
+}
+const BATCH_LOG_PREFIX = "claude-sentry-";
+const BATCH_LOG_SUFFIX = ".jsonl";
+// A session that crashes, is killed, or ends when the machine sleeps never runs
+// its SessionEnd hook, so its batch log is never flushed and never removed. Left
+// alone these accumulate in the temp dir forever and the traces are lost
+// silently. Sessions older than this are considered abandoned and recovered.
+const STALE_LOG_MIN_AGE_MS = 60 * 60 * 1000; // 1 hour
+// Anything this old is deleted even if it cannot be parsed into a trace.
+const STALE_LOG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Bound the work a single sweep can do, so a large backlog cannot stall things.
+const STALE_LOG_SWEEP_LIMIT = 20;
+function findStaleLogs(currentSessionId, now) {
+    let entries;
+    try {
+        entries = readdirSync(tmpdir());
+    }
+    catch {
+        return [];
+    }
+    const stale = [];
+    for (const entry of entries) {
+        if (!entry.startsWith(BATCH_LOG_PREFIX) || !entry.endsWith(BATCH_LOG_SUFFIX)) {
+            continue;
+        }
+        const sessionId = entry.slice(BATCH_LOG_PREFIX.length, -BATCH_LOG_SUFFIX.length);
+        if (!sessionId || sessionId === currentSessionId)
+            continue;
+        const path = join(tmpdir(), entry);
+        let ageMs;
+        try {
+            ageMs = now - statSync(path).mtimeMs;
+        }
+        catch {
+            continue;
+        }
+        if (ageMs < STALE_LOG_MIN_AGE_MS)
+            continue;
+        stale.push({ sessionId, path, ageMs });
+    }
+    // Oldest first: the most likely to be genuinely abandoned.
+    stale.sort((a, b) => b.ageMs - a.ageMs);
+    return stale.slice(0, STALE_LOG_SWEEP_LIMIT);
+}
+// Runs detached from the hook so recovery never adds latency to a session.
+async function sweepStaleLogs(currentSessionId, config) {
+    const stale = findStaleLogs(currentSessionId, Date.now());
+    if (stale.length === 0)
+        return;
+    initSentry(config);
+    for (const { sessionId, path, ageMs } of stale) {
+        try {
+            Sentry.setConversationId(sessionId);
+            await processBatch(path, config);
+        }
+        catch {
+            // Unparseable or half-written logs must not be retried forever.
+            if (ageMs > STALE_LOG_MAX_AGE_MS) {
+                try {
+                    unlinkSync(path);
+                }
+                catch { }
+            }
+        }
+    }
+}
+// Tags every trace with the repository it came from, so sessions across
+// different projects can be told apart in Sentry.
+function repoNameFromCwd(cwd) {
+    if (!cwd)
+        return null;
+    let dir = cwd;
+    for (let i = 0; i < 40; i++) {
+        if (existsSync(join(dir, ".git"))) {
+            const name = dir.split("/").filter(Boolean).pop();
+            return name || null;
+        }
+        const parent = join(dir, "..");
+        const resolved = parent.replace(/\/+$/, "");
+        if (resolved === dir)
+            break;
+        const up = dir.slice(0, dir.lastIndexOf("/"));
+        if (!up || up === dir)
+            break;
+        dir = up;
+    }
+    return null;
 }
 function initSentry(config) {
     Sentry.init({
@@ -338,6 +425,10 @@ async function processBatch(filePath, config) {
         .filter((i) => i >= 0);
     const turns = sessionTurns(transcript, sessionStart?._transcriptTurns, userPromptIndices.length);
     const rootSpan = startAgentSpan(config, requestModel, firstTs);
+    const repo = repoNameFromCwd(sessionStart?.cwd || events[0]?.cwd);
+    if (repo) {
+        rootSpan.setAttribute("claude_code.repo", repo);
+    }
     if (transcript?.model) {
         rootSpan.setAttribute("gen_ai.response.model", transcript.model);
     }
@@ -402,8 +493,13 @@ function startServer(config) {
             case "SessionStart": {
                 const transcriptPath = event.transcript_path;
                 const requestModel = event.model || DEFAULT_MODEL;
+                const rootSpan = startAgentSpan(config, requestModel);
+                const repo = repoNameFromCwd(event.cwd);
+                if (repo) {
+                    rootSpan.setAttribute("claude_code.repo", repo);
+                }
                 sessions.set(session_id, {
-                    rootSpan: startAgentSpan(config, requestModel),
+                    rootSpan,
                     requestModel,
                     currentTurnSpan: null,
                     pendingTools: new Map(),
@@ -584,6 +680,12 @@ async function main() {
     else {
         const logfile = batchLogPath(sessionId);
         appendFileSync(logfile, JSON.stringify(timestamped) + "\n");
+        // Recover abandoned sessions in the background so the hook stays fast.
+        if (hookEvent === "SessionStart") {
+            const { spawn } = await import("node:child_process");
+            const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--sweep", sessionId], { detached: true, stdio: "ignore" });
+            child.unref();
+        }
         // Only the SessionEnd hook talks to Sentry; every other hook just appends a line.
         if (hookEvent === "SessionEnd") {
             initSentry(config);
@@ -597,6 +699,16 @@ if (command === "--serve" && configArg) {
     const config = JSON.parse(configArg);
     initSentry(config);
     startServer(config);
+}
+else if (command === "--sweep") {
+    loadPluginConfig()
+        .then(async (loaded) => {
+        if (!loaded)
+            return;
+        await sweepStaleLogs(configArg ?? "", loaded.config);
+    })
+        .catch(() => { })
+        .finally(() => process.exit(0));
 }
 else {
     main().catch(() => process.exit(0));
