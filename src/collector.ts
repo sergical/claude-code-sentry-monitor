@@ -278,6 +278,7 @@ function startChatSpan(
       "gen_ai.provider.name": PROVIDER_NAME,
       "gen_ai.request.model": requestModel,
       ...messageAttributes(config, prompt, null),
+      ...config.tags,
     },
   });
 }
@@ -314,7 +315,7 @@ function startToolSpan(
     "gen_ai.operation.name": "execute_tool",
     "gen_ai.agent.name": AGENT_NAME,
     "gen_ai.tool.name": toolName,
-    "gen_ai.tool.type": "function",
+    ...config.tags,
   };
   if (config.recordInputs && input) {
     attrs["gen_ai.tool.call.arguments"] = serializeAttribute(input, config.maxAttributeLength);

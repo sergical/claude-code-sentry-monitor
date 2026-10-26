@@ -4,7 +4,7 @@ Sentry AI Agent Monitoring plugin for [Claude Code](https://docs.anthropic.com/e
 
 Each Claude Code session becomes a root `invoke_agent` span, each prompt becomes a child `chat` span with its token usage, and every tool call becomes an `execute_tool` span. All spans share the session id as `gen_ai.conversation.id`, so sessions show up in **Sentry AI Agents** and the **Conversations** view.
 
-Requires Node.js 18 or newer on the machine that runs Claude Code.
+Requires Node.js 20.19 or newer on the machine that runs Claude Code.
 
 ## Installation
 
