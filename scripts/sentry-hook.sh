@@ -10,14 +10,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Exit silently when node is missing or older than the SDK supports (Node 18+),
+# Exit silently when node is missing or older than the SDK supports (Node 20.19+),
 # so the hook never blocks Claude Code on a host without a usable runtime.
 if ! command -v node >/dev/null 2>&1; then
   cat >/dev/null
   exit 0
 fi
-NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
-if [ "${NODE_MAJOR:-0}" -lt 18 ]; then
+if ! node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 20 || (a === 20 && b >= 19) ? 0 : 1)' 2>/dev/null; then
   cat >/dev/null
   exit 0
 fi
